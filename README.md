@@ -12,9 +12,10 @@ curl -sLo manage-hc-docker.sh 'https://github.com/komacke/hamclock/releases/down
 chmod +x manage-hc-docker.sh
 ```
 
-See the commands available with ```./manage-hc-docker.sh help``` and do an install with ```./manage-hc-docker.sh```.
+See the commands available with ```./manage-hc-docker.sh help``` and do an install with ```./manage-hc-docker.sh install```.
 
 NOTE: you'll likely want to use the -b option to set the backend server.
+NOTE: you can select from the 4 possible sizes with the -s option: ```800x480 1600x960 2400x1440 3200x1920```
 
 ## Preconfigure it on a first run
 
