@@ -12,6 +12,10 @@ curl -sLo manage-hc-docker.sh 'https://github.com/komacke/hamclock/releases/down
 chmod +x manage-hc-docker.sh
 ```
 
-See the commands available with ``./manage-hc-docker.sh help``` and do an install with ```./manage-hc-docker.sh```.
+See the commands available with ```./manage-hc-docker.sh help``` and do an install with ```./manage-hc-docker.sh```.
 
 NOTE: you'll likely want to use the -b option to set the backend server.
+
+## Preconfigure it on a first run
+
+The first time you run it, you can preconfigure some of your personal settings. Look for the [config.env.example](https://github.com/komacke/hamclock/blob/main/docker/config.env.example) file. Name it config.env and put it in the same folder with your manage-hc-docker.sh. Edit it as you like and it will pre-configure your hamclock. If you don't use the config.env, you'll get the usual setup screen for a fresh install.
