@@ -106,7 +106,7 @@ get_compose_opts() {
                 REQUESTED_RO_PORT="$OPTARG"
                 ;;
             s)
-                REQUESTED_HC_SETTINGS="$OPTARG"
+                REQUESTED_HC_EEPROM="$OPTARG"
                 ;;
             t)
                 REQUESTED_TAG="$OPTARG"
@@ -335,12 +335,12 @@ is_hamclock_installed() {
         RETVAL=1
         return $RETVAL
     else
-        get_current_live_port
+        get_current_ports
         echo "  Hamclock version:      '$CURRENT_TAG'"
         echo "  Docker image:          '$CURRENT_IMAGE_BASE:$CURRENT_TAG'"
-        echo "  API port in use:       '$CURRENT_API_PORT'"
-        echo "  Live port in use:      '$CURRENT_LIVE_PORT'"
-        echo "  R/O port in use:       '$CURRENT_RO_PORT'"
+        [ -n "$CURRENT_API_PORT" ]  && echo "  API port(s) in use:    '$CURRENT_API_PORT'"
+        [ -n "$CURRENT_LIVE_PORT" ] && echo "  Live port(s) in use:   '$CURRENT_LIVE_PORT'"
+        [ -n "$CURRENT_RO_PORT" ]   && echo "  R/O port(s) in use:    '$CURRENT_RO_PORT'"
         echo -n "  Backend host:          "
         if [ "$STICKY_BACKEND_HOST" == '-' ]; then
             echo "Image default"
@@ -358,7 +358,7 @@ is_hamclock_installed() {
 upgrade_hamclock() {
     is_docker_installed >/dev/null || return $?
 
-    get_current_live_port
+    get_current_ports
     get_current_image_tag
 
     echo "Upgrading Hamclock ..."
@@ -436,7 +436,7 @@ docker_compose_down() {
 }
 
 docker_compose_reset() {
-    get_current_live_port
+    get_current_ports
     get_current_image_tag
     docker_compose_down || return $RETVAL
     docker_compose_up
@@ -471,7 +471,7 @@ remove_hamclock() {
 }
 
 recreate_hamclock() {
-    get_current_live_port
+    get_current_ports
     get_current_image_tag
 
     remove_hamclock || return $RETVAL
@@ -486,6 +486,12 @@ is_container_running() {
 is_container_exists() {
     docker ps -a --format '{{.Names}}' | grep -xqs $CONTAINER
     return $?
+}
+
+get_current_ports() {
+    get_current_live_port
+    get_current_api_port
+    get_current_ro_port
 }
 
 get_current_live_port() {
@@ -503,6 +509,36 @@ get_current_live_port() {
     done
 }
 
+get_current_api_port() {
+    PORTS=( $(docker inspect hamclock 2>/dev/null | jq -r '.[0].HostConfig.PortBindings."8080/tcp"[].HostPort' 2>/dev/null) )
+    IPS=( $(docker inspect hamclock 2>/dev/null | jq -r '.[0].HostConfig.PortBindings."8080/tcp"[].HostIp' 2>/dev/null) )
+    CURRENT_API_PORT=
+    let i=0
+    while [ $i -lt ${#PORTS[@]} ]; do
+        if [ -z "$CURRENT_API_PORT" ]; then
+            CURRENT_API_PORT="${IPS[$i]}:${PORTS[$i]}"
+        else
+            CURRENT_API_PORT="${CURRENT_LIVE_PORT}|${IPS[$i]}:${PORTS[$i]}"
+        fi
+        i=$(($i+1))
+    done
+}
+
+get_current_ro_port() {
+    PORTS=( $(docker inspect hamclock 2>/dev/null | jq -r '.[0].HostConfig.PortBindings."8082/tcp"[].HostPort' 2>/dev/null) )
+    IPS=( $(docker inspect hamclock 2>/dev/null | jq -r '.[0].HostConfig.PortBindings."8082/tcp"[].HostIp' 2>/dev/null) )
+    CURRENT_RO_PORT=
+    let i=0
+    while [ $i -lt ${#PORTS[@]} ]; do
+        if [ -z "$CURRENT_RO_PORT" ]; then
+            CURRENT_RO_PORT="${IPS[$i]}:${PORTS[$i]}"
+        else
+            CURRENT_RO_PORT="${CURRENT_LIVE_PORT}|${IPS[$i]}:${PORTS[$i]}"
+        fi
+        i=$(($i+1))
+    done
+}
+
 get_current_image_tag() {
     CURRENT_DOCKER_IMAGE=$(docker inspect $CONTAINER 2>/dev/null | jq -r '.[0].Config.Image')
     if [ "$CURRENT_DOCKER_IMAGE" != 'null' ]; then
@@ -511,8 +547,19 @@ get_current_image_tag() {
     fi
 }
 
+determine_ports() {
+    get_current_ports
+
+    determine_live_port
+    determine_api_port
+    determine_ro_port
+
+    if [ -n "${LIVE_PORT_MAPPING}${API_PORT_MAPPING}${RO_PORT_MAPPING}" ]; then
+        PORT_MAPPING="ports:"$'\n'${LIVE_PORT_MAPPING}${API_PORT_MAPPING}${RO_PORT_MAPPING}
+    fi
+}
+
 determine_live_port() {
-    get_current_live_port
 
     # first precedence
     if [ -n "$REQUESTED_LIVE_PORT" ]; then
@@ -535,14 +582,82 @@ determine_live_port() {
     if [ "$LIVE_PORT" == "-" ]; then
         LIVE_PORT_MAPPING=""
     else
-		IFS='|' read -ra LIVE_PORT_ARRAY <<< "$LIVE_PORT"
+        IFS='|' read -ra LIVE_PORT_ARRAY <<< "$LIVE_PORT"
 
         LIVE_PORT_MAPPING=""
-		for p in "${LIVE_PORT_ARRAY[@]}"; do
+        for p in "${LIVE_PORT_ARRAY[@]}"; do
             # if there was a :, it was probably IP:PORT; otherwise make sure there's a colon for port only
             [[ $p =~ : ]] || p=":$p"
-  			LIVE_PORT_MAPPING+="      - \"${p}:8081\""$'\n'
-		done
+            LIVE_PORT_MAPPING+="      - \"${p}:8081\""$'\n'
+        done
+    fi
+}
+
+determine_api_port() {
+
+    # first precedence
+    if [ -n "$REQUESTED_API_PORT" ]; then
+        API_PORT=$REQUESTED_API_PORT
+
+    # second precedence
+    elif [ -n "$CURRENT_API_PORT" -a "$CURRENT_API_PORT" != ':' ]; then
+        API_PORT=$CURRENT_API_PORT
+
+    # third precedence
+    elif [ -n "$STICKY_API_PORT" ]; then
+        API_PORT=$STICKY_API_PORT
+
+    # fourth precedence
+    else
+        API_PORT=$DEFAULT_API_PORT
+
+    fi
+
+    if [ "$API_PORT" == "-" ]; then
+        API_PORT_MAPPING=""
+    else
+        IFS='|' read -ra API_PORT_ARRAY <<< "$API_PORT"
+
+        API_PORT_MAPPING=""
+        for p in "${API_PORT_ARRAY[@]}"; do
+            # if there was a :, it was probably IP:PORT; otherwise make sure there's a colon for port only
+            [[ $p =~ : ]] || p=":$p"
+            API_PORT_MAPPING+="      - \"${p}:8080\""$'\n'
+        done
+    fi
+}
+
+determine_ro_port() {
+
+    # first precedence
+    if [ -n "$REQUESTED_RO_PORT" ]; then
+        RO_PORT=$REQUESTED_RO_PORT
+
+    # second precedence
+    elif [ -n "$CURRENT_RO_PORT" -a "$CURRENT_RO_PORT" != ':' ]; then
+        RO_PORT=$CURRENT_RO_PORT
+
+    # third precedence
+    elif [ -n "$STICKY_RO_PORT" ]; then
+        RO_PORT=$STICKY_RO_PORT
+
+    # fourth precedence
+    else
+        RO_PORT=$DEFAULT_RO_PORT
+
+    fi
+
+    if [ "$RO_PORT" == "-" ]; then
+        RO_PORT_MAPPING=""
+    else
+        IFS='|' read -ra RO_PORT_ARRAY <<< "$RO_PORT"
+
+        RO_PORT_MAPPING=""
+        for p in "${RO_PORT_ARRAY[@]}"; do
+            # if there was a :, it was probably IP:PORT; otherwise make sure there's a colon for port only
+            [[ $p =~ : ]] || p=":$p"
+            RO_PORT_MAPPING+="      - \"${p}:8082\""$'\n'
+        done
     fi
 }
 
@@ -566,7 +681,9 @@ determine_eeprom_file() {
     # they exist.
     if [ ! -e "$HC_EEPROM" ]; then
         touch "$HC_EEPROM"
-        INITIAL_CONFIG_FILE="--env-file $HERE/config.env"
+        if [ -r "$HERE/config.env" ]; then
+            INITIAL_CONFIG_FILE="--env-file $HERE/config.env"
+        fi
     fi
 }
 
@@ -635,7 +752,7 @@ determine_tag() {
 }
 
 docker_compose_yml() {
-    determine_live_port
+    determine_ports
     determine_backend_host
     determine_eeprom_file
 
@@ -666,10 +783,7 @@ services:
     restart: unless-stopped
     networks:
       - hamclock
-    ports:
-$LIVE_PORT_MAPPING
-$API_PORT_MAPPING
-$RO_PORT_MAPPING
+    ${PORT_MAPPING}
     volumes:
       - type: bind
         source: $HC_EEPROM
