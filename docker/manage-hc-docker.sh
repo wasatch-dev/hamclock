@@ -698,14 +698,18 @@ determine_eeprom_file() {
     hc_settings_perms
 }
 
+# checking if the HC_EEPROM file is writable by the user in the container. If not the
+# container will crash and we need to fix it.
 hc_settings_perms() {
     # hc.settings needs to be writable by user 1199:1199
     HC_PERMS=$(stat -c '%a' "$HC_EEPROM")
+
     # who owns it
     HC_OWN=$(stat -c '%u' "$HC_EEPROM")
     HC_GRP=$(stat -c '%g' "$HC_EEPROM")
 
     CAN_ACCESS=false
+
     # test for u+rw
     if [[ "$HC_OWN" == "$HC_UID" && "$HC_PERMS" == [67]?? ]]; then
         CAN_ACCESS=true
@@ -713,24 +717,50 @@ hc_settings_perms() {
     # test for g+rw
     elif [[ "$HC_GRP" == "$HC_GID" && "$HC_PERMS" == ?[67]? ]]; then
         CAN_ACCESS=true
+
+    # test for o+rw
     elif [[ "$HC_PERMS" == ??[67] ]]; then
         CAN_ACCESS=true
+
+    # otherwise try to fix it
     else
-        chmod o+rw $HC_EEPROM >/dev/null 2>&1
+
+        # set o+rw
+        chmod o+rw "$HC_EEPROM" >/dev/null 2>&1
         PERM_RETVAL=$?
+
+        # if we couldn't set it, we can copy it, delete the original and
+        # set the perms
         if [ $PERM_RETVAL -ne 0 ]; then
-            echo "ERROR:"
-            echo "    '$REL_HERE/$(basename "$HC_EEPROM")' needs to be read/write by user $HC_UID:$HC_GID"
-            echo
-            echo "    Try something like this:"
-            echo "        sudo chown $HC_UID:$HC_GID $REL_HERE/$(basename "$HC_EEPROM")"
-            echo "    or"
-            echo "        sudo chmod o+rw $REL_HERE/$(basename "$HC_EEPROM")"
-            echo
-            exit 1
+
+            # we can do it if the container isn't holding the fh
+            get_current_image_tag
+            if [ "$CURRENT_DOCKER_IMAGE" == null ]; then
+                cp "$HC_EEPROM" "$HC_EEPROM.tmp"
+                rm -f "$HC_EEPROM"
+                mv "$HC_EEPROM.tmp" "$HC_EEPROM"
+                chmod o+rw $HC_EEPROM >/dev/null 2>&1
+                PERM_RETVAL=$?
+                if [ $PERM_RETVAL -eq 0 ]; then
+                    CAN_ACCESS=true
+                else
+                    CAN_ACCESS=false
+                fi
+
+            # otherwise we need to take harsher measures.
+            else
+                CAN_ACCESS=false
+            fi
         fi
     fi
 
+    # take harsher measures - down the container and don't cause an infinite loop
+    if [ $CAN_ACCESS == false ]; then
+        if [ ${FUNCNAME[3]} != docker_compose_down ]; then
+            docker_compose_down
+            [ ${FUNCNAME[1]} != hc_settings_perms ] && hc_settings_perms
+        fi
+    fi
 }
 
 determine_backend_host() {
