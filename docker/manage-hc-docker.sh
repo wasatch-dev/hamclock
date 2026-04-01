@@ -13,7 +13,8 @@ THIS="$(basename "$0")"
 STARTED_FROM="$PWD"
 cd $HERE
 
-DOCKER_PROJECT=${THIS%.*}
+DOCKER_PROJECT="${THIS%.sh}"
+DOCKER_PROJECT="${DOCKER_PROJECT%-$OHB_MANAGER_VERSION}"
 DEFAULT_TAG=$HC_MANAGER_VERSION
 GIT_TAG=$(git describe --exact-match --tags 2>/dev/null)
 GIT_VERSION=$(git rev-parse --short HEAD 2>/dev/null)
