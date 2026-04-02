@@ -47,7 +47,7 @@ jobs:
 
           # zip file for HamClock upgrades
           zip -r "dist/ESPHamClock-V$HC_TAG.zip" ESPHamClock -x "dist/*"
-          zip -r "dist/hamclock-contrib.zip" hamclock-contrib -x "dist/*"
+          zip -r "dist/hamclock-contrib-V$HC_TAG.zip" hamclock-contrib -x "dist/*"
 
       - name: Create Release and Upload Asset
         env:

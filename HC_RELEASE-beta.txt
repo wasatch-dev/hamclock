@@ -1,2 +1,2 @@
 Changes with latest release
-- fix SDO movies URL since NOAA retired the old site
+- no changes from 4.22. Just for testing beta process
