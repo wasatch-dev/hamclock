@@ -234,7 +234,16 @@ find_latest_tag() {
     BETA_TAG=$(echo "$ALL_TAGS_JSON" | jq -r '.[].name' | grep "b" | sort -V | tail -n 1)
 
     if [[ "$HC_MANAGER_VERSION" == *b* ]]; then
-        LATEST_TAG=$BETA_TAG
+        BASE_VERSION=$(echo "$BETA_TAG" | sed 's/b.*//')
+
+        # Compare Stable vs Base: if Stable >= Base, use Stable.
+        HIGHER_VERSION=$(echo -e "$STABLE_TAG\n$BASE_VERSION" | sort -V | tail -n 1)
+
+        if [[ "$STABLE_TAG" == "$BASE_VERSION" ]] || [[ "$HIGHER_VERSION" == "$STABLE_TAG" ]]; then
+            LATEST_TAG=$STABLE_TAG
+        else
+            LATEST_TAG=$BETA_TAG
+        fi
     else
         LATEST_TAG=$STABLE_TAG
     fi
