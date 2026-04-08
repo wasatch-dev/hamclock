@@ -318,7 +318,6 @@ if [ -d $MPATH ] && [ $HC_WEBONLY -eq 0 ] && ask "install HamClock man page" ; t
 fi
 
 
-
 # start on boot?
 if ask "start HamClock automatically each time Pi is booted" ; then
     if [ $HC_WEBONLY -eq 0 ] ; then
@@ -326,23 +325,33 @@ if ask "start HamClock automatically each time Pi is booted" ; then
         DOTCFG=$HOME/.config
         if [ -d $DOTCFG ] ; then
             ASPATH=$DOTCFG/autostart
+            ASFILE=$ASPATH/hamclock.desktop
             mkdir -p $ASPATH
-            cp -f hamclock.desktop $ASPATH
+            if [ -e "$ASFILE" ] ; then
+                inform Autostart file already exists, leaving it unchanged: $ASFILE
+            else
+                cp hamclock.desktop "$ASFILE"
+            fi
         else
             inform Error: $DOTCFG does not exist
         fi
     else
         # add to crontab if not already
         CTBTMP=.x.crontab
-        crontab -l > $CTBTMP
-        if grep -q hamclock $CTBTMP ; then
+        CRON_ENTRY='@reboot /usr/local/bin/hamclock'
+
+        crontab -l > $CTBTMP 2>/dev/null || : 
+
+        if grep -Fqx "$CRON_ENTRY" "$CTBTMP" ; then
             inform hamclock is already in crontab
+        elif grep -Eq '^[[:space:]]*@reboot[[:space:]]+/usr/local/bin/hamclock([[:space:]]|$)' "$CTBTMP" ; then
+            inform Existing HamClock @reboot entry found, leaving it unchanged
         else
             inform adding hamclock to crontab
-            echo "@reboot /usr/local/bin/hamclock" >> $CTBTMP
+            echo "$CRON_ENTRY" >> $CTBTMP
             crontab $CTBTMP
         fi
-        rm $CTBTMP
+        rm -f $CTBTMP
     fi
 else
     # undo autostarting
@@ -350,10 +359,13 @@ else
         rm -f $HOME/.config/autostart/hamclock.desktop
     else
         CTBTMP=.x.crontab
-        crontab -l | sed -e /hamclock/d > $CTBTMP
-        crontab $CTBTMP
+        CRON_ENTRY='@reboot /usr/local/bin/hamclock'
+
+        crontab -l > $CTBTMP 2>/dev/null || :
+        grep -Fvx "$CRON_ENTRY" "$CTBTMP" > ${CTBTMP}.new
+        crontab ${CTBTMP}.new
+        rm -f $CTBTMP ${CTBTMP}.new
     fi
 fi
-
 inform HamClock installation is complete.
 inform You may run now run HamClock by typing hamclock.
