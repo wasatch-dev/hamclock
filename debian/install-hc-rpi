@@ -81,7 +81,37 @@ function dumpConfig ()
     ping -c 3 clearskyinstitute.com
 }
 
+get_hamclock_source_url() {
+    local substring=$1
 
+    if [ -z "$substring" ]; then
+        echo "Usage: get_hamclock_url <version_substring> (e.g., 4.22)" >&2
+        return 1
+    fi
+
+    # GitHub API endpoint for releases
+    local api_url="https://api.github.com/repos/komacke/hamclock/releases"
+
+    # Define the target filename we are looking for
+    local target_asset="ESPHamClock-V${substring}.zip"
+
+    # 1. Fetch releases
+    # 2. Flatten all assets into one list
+    # 3. Filter for the specific filename
+    # 4. Grab the first (latest) matching URL
+    local download_url=$(curl -s "$api_url" | jq -r --arg target "$target_asset" '
+        map(.assets[])
+        | .[]
+        | select(.name == $target)
+        | .browser_download_url
+    ' | head -n 1)
+
+    if [ -z "$download_url" ] || [ "$download_url" == "null" ]; then
+        echo "Error: Asset '$target_asset' not found on GitHub." >&2
+        return 1
+    fi
+    TBURL="$download_url"
+}
 
 ######################################################################################
 #
@@ -130,29 +160,39 @@ dumpConfig >> $LOGFN
 # insure necessary helper packages are installed
 inform Installing required helper packages ...
 PKGS="\
-    make \
-    g++ \
-    libx11-dev \
-    x11-utils \
-    xserver-xorg \
-    linux-libc-dev \
-    gpiod \
-    libgpiod-dev \
     curl \
+    g++ \
+    gpiod \
+    jq \
+    libgpiod-dev \
+    libx11-dev \
+    linux-libc-dev \
+    make \
     openssl \
     unzip \
-    xdg-utils"
+    x11-utils \
+    xdg-utils \
+    xserver-xorg\
+"
 sudo apt-get -y update >> $LOGFN 2>&1
 sudo apt-get -y install $PKGS >> $LOGFN 2>&1
 if (( $? != 0 )) ; then echo error loading packages; exit 1; fi
 
+TBALL=ESPHamClock.zip
+if [ "$1" == -t ]; then
+    if [ -z "$2" ]; then
+        echo "The -t argument requires a version like 4.22."
+        exit 1
+    fi
+    get_hamclock_source_url "$2"
+else
+    TBURL=https://ohb.hamclock.app/ham/HamClock/$TBALL
+fi
 
 # download fresh program source
-TBALL=ESPHamClock.zip
-TBURL=https://ohb.hamclock.app/ham/HamClock/$TBALL
 rm -f $TBALL
 inform Downloading $TBURL ...
-if ! curl --silent --show-error --output $TBALL $TBURL >> $LOGFN 2>&1 ; then
+if ! curl -L --silent --show-error --output $TBALL $TBURL >> $LOGFN 2>&1 ; then
     inform Error downloading $TBURL -- see $LOGFN
     exit 1
 fi
