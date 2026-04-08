@@ -368,4 +368,4 @@ else
     fi
 fi
 inform HamClock installation is complete.
-inform You may run now run HamClock by typing hamclock.
+inform You may now run HamClock by typing hamclock.
