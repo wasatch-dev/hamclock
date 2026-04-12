@@ -34,10 +34,6 @@ endif
 ifdef S
     CXXFLAGS += -D_S=$(S)
 endif
-# add version https override ad _VERSION_HTTPS if defined
-ifeq ($(VERSION_HTTPS),1)
-    CXXFLAGS += -D_VERSION_HTTPS
-endif
 # handle WiFi configuration
 ifeq ($(WIFI_NEVER),1)
     CXXFLAGS += -D_WIFI_NEVER

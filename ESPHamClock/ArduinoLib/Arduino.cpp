@@ -23,11 +23,8 @@ std::string our_dir;            // our storage directory, including trailing /
 bool rm_eeprom;                 // set by -0 to rm eeprom to restore defaults
 bool ignore_x11geom;            // set by -q to ignore startup loc and size
 
-#if defined(_VERSION_HTTPS)
-  bool version_https=true;
-#else
-  bool version_https=false;             // forces https to be used for fetching version
-#endif
+bool version_https=false;             // forces https to be used for fetching version
+
 // list of diagnostic files, newest first
 const char *diag_files[N_DIAG_FILES] = {
     "diagnostic-log.txt",
@@ -96,9 +93,6 @@ static void initBuildVariables(void)
     #if defined(_S)
         snprintf (build_variables+strlen(build_variables), sizeof(build_variables)-strlen(build_variables), "S=%s ", TOSTRING(_S));
     #endif
-	#if defined(_VERSION_HTTPS)
-	    snprintf (build_variables+strlen(build_variables), sizeof(build_variables)-strlen(build_variables), "VERSION_HTTPS=1 ");
-	#endif
     #if defined(_WIFI_NEVER)
         strcat(build_variables, "WIFI_NEVER=1 ");
     #endif
@@ -478,7 +472,8 @@ static void crackArgs (int ac, char *av[])
     #if defined(_S)
 	    {
             char *myb = strdup(TOSTRING(_S));
-			software_host = myb;
+	    software_host = myb;
+            version_https=true;
 	    }
     #endif
         while (--ac && **++av == '-') {
@@ -512,7 +507,7 @@ static void crackArgs (int ac, char *av[])
                         if (myb_colon) {
                             *myb_colon = '\0';                  // put EOS after host
                             backend_host = myb;
-							software_host = myb;
+			    software_host = myb;
                             backend_port = atoi(myb_colon+1);
                             if (backend_port < 1 || backend_port > 65535)
                                 usage ("-b port must be [1,65355]");
@@ -609,12 +604,13 @@ static void crackArgs (int ac, char *av[])
                     ac--;
                     break;
                case 'S': {
-						if (ac < 2)
-							usage ("missing software server for -S");
-						char *mys = strdup(*++av);
-						software_host = mys;
-						ac--;
-					}
+                        if (ac < 2)
+                            usage ("missing software server for -S");
+                        char *mys = strdup(*++av);
+                        software_host = mys;
+                        version_https=true;
+                        ac--;
+                    }
                     break;
                 case 't':
                     if (ac < 2)
@@ -624,16 +620,16 @@ static void crackArgs (int ac, char *av[])
                         usage ("-t percentage must be [10,100]");
                     ac--;
                     break;
-				case 'T': {
-						if (ac < 2)
-							usage ("Missing timeout for -T");
-						uint8_t to = atoi(*++av);
-						if (to < 1 || to > 65)
+                case 'T': {
+                        if (ac < 2)
+                            usage ("Missing timeout for -T");
+                        uint8_t to = atoi(*++av);
+                        if (to < 1 || to > 65)
                             usage ("-T must be [1,65]");
-						ac--;
-						set_timeout_s(to);
-					}
-					break;
+                        ac--;
+                        set_timeout_s(to);
+                    }
+                    break;
                 case 'v':
                     showVersion();
                     exit(0);
@@ -662,8 +658,8 @@ static void crackArgs (int ac, char *av[])
         }
 
         // if software host and back are different, get version from software host via https
-		if (strcmp(backend_host,software_host) != 0)
-			version_https=true;
+        if (strcmp(backend_host,software_host) != 0)
+            version_https=true;
         // initial checks
         if (ac > 0)
             usage ("extra args");
