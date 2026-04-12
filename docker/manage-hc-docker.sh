@@ -6,8 +6,7 @@ GITHUB_REPO="komacke/hamclock"
 IMAGE_BASE=komacke/hamclock
 
 # Get our directory locations in order
-HERE="$(realpath -s "$(dirname "$0")" 2>/dev/null)"
-[ -z "$HERE" ] && HERE="$(realpath "$(dirname "$0")")"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 REL_HERE="$(dirname "$0")"
 THIS="$(basename "$0")"
 STARTED_FROM="$PWD"
@@ -740,7 +739,9 @@ determine_eeprom_file() {
 
     fi
 
-    HC_EEPROM="$(realpath -s "$(dirname "$HC_EEPROM")" 2>/dev/null)/$(basename "$HC_EEPROM")"
+    # for the path to be fully qualified because our docker-compose generated inline
+    # needs this
+    HC_EEPROM="$(cd "$(dirname "$HC_EEPROM")" && pwd)/$(basename "$HC_EEPROM")"
     # if the eeprom file doesn't exist, create it for proper mounting and use defaults if
     # they exist.
     if [ ! -e "$HC_EEPROM" ]; then

@@ -22,7 +22,7 @@ IMAGE=$IMAGE_BASE:$TAG
 CONTAINER=${IMAGE_BASE##*/}
 
 # Get our directory locations in figured out
-HERE="$(realpath -s "$(dirname "$0")")"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 THIS="$(basename "$0")"
 cd $HERE
 
