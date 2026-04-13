@@ -507,7 +507,7 @@ static void crackArgs (int ac, char *av[])
                         if (myb_colon) {
                             *myb_colon = '\0';                  // put EOS after host
                             backend_host = myb;
-                software_host = myb;
+                            software_host = myb;
                             backend_port = atoi(myb_colon+1);
                             if (backend_port < 1 || backend_port > 65535)
                                 usage ("-b port must be [1,65355]");
@@ -705,99 +705,99 @@ static void crackArgs (int ac, char *av[])
  */
 int main (int ac, char *av[])
 {
-        // save our args for restart or remote update
+    // save our args for restart or remote update
     our_argv = av;
 
-        // always want stdout immediate and allow for multiple processes writing
-        fcntl (1, F_SETFL, fcntl (1, F_GETFL, 0) | O_APPEND);
-        setbuf (stdout, NULL);
+    // always want stdout immediate and allow for multiple processes writing
+    fcntl (1, F_SETFL, fcntl (1, F_GETFL, 0) | O_APPEND);
+    setbuf (stdout, NULL);
 
-        // initialize extra defines
-        initBuildVariables();
+    // initialize extra defines
+    initBuildVariables();
 
-        // check args
-        crackArgs (ac, av);
+    // check args
+    crackArgs (ac, av);
 
-        // log args after cracking so they get into the proper diag file
-        printf ("\nNew program args:\n");
-        for (int i = 0; i < ac; i++)
-            printf ("  argv[%d] = %s\n", i, av[i]);
+    // log args after cracking so they get into the proper diag file
+    printf ("\nNew program args:\n");
+    for (int i = 0; i < ac; i++)
+        printf ("  argv[%d] = %s\n", i, av[i]);
 
-        // log some sys info
-        logSys();
+    // log some sys info
+    logSys();
 
-        // log os release, if available
-        logOS();
+    // log os release, if available
+    logOS();
 
     // call Arduino setup one time
-        printf ("Calling Arduino setup()\n");
+    printf ("Calling Arduino setup()\n");
     setup();
 
     // call Arduino loop forever
-        // this loop by itself would run 100% CPU so offer a means to be a better citizen and throttle back
-        printf ("Starting Arduino loop()\n");
+    // this loop by itself would run 100% CPU so offer a means to be a better citizen and throttle back
+    printf ("Starting Arduino loop()\n");
 
-        if (max_cpu_usage == 1) {
+    if (max_cpu_usage == 1) {
 
-            // pure loop
-            for (;;)
-                loop();
+        // pure loop
+        for (;;)
+            loop();
 
-        } else {
+    } else {
 
-            // init performance metrics in order to throttle usage
-            int cpu_us = 0, et_us = 0;      // cpu and elapsed time
-            int sleep_us = 100;             // initial sleep, usecs
-            const int sleep_dt = 10;        // sleep adjustment, usecs
-            const int max_sleep = 50000;    // max sleep each loop, usecs
+        // init performance metrics in order to throttle usage
+        int cpu_us = 0, et_us = 0;      // cpu and elapsed time
+        int sleep_us = 100;             // initial sleep, usecs
+        const int sleep_dt = 10;        // sleep adjustment, usecs
+        const int max_sleep = 50000;    // max sleep each loop, usecs
 
-            #define TVUSEC(tv0,tv1) (((tv1).tv_sec-(tv0).tv_sec)*1000000 + ((tv1).tv_usec-(tv0).tv_usec))
+        #define TVUSEC(tv0,tv1) (((tv1).tv_sec-(tv0).tv_sec)*1000000 + ((tv1).tv_usec-(tv0).tv_usec))
 
-            for (;;) {
+        for (;;) {
 
-                // get time and usage before calling loop()
-                struct rusage ru0;
-                getrusage (RUSAGE_SELF, &ru0);
-                struct timeval tv0;
-                gettimeofday (&tv0, NULL);
+            // get time and usage before calling loop()
+            struct rusage ru0;
+            getrusage (RUSAGE_SELF, &ru0);
+            struct timeval tv0;
+            gettimeofday (&tv0, NULL);
 
-                // Ardino loop
-                loop();
+            // Ardino loop
+            loop();
 
-                // cap cpu usage by sleeping controlled by a simple integral controller
-                if (cpu_us > et_us*max_cpu_usage) {
-                    // back off
-                    if (sleep_us < max_sleep)
-                        sleep_us += sleep_dt;
-                } else {
-                    // more!
-                    if (sleep_us < sleep_dt)
-                        sleep_us = 0;
-                    else
-                        sleep_us -= sleep_dt;
-                }
-                if (sleep_us > 0)
-                    usleep (sleep_us);
-
-                // get time and usage after running loop() and our usleep
-                struct rusage ru1;
-                getrusage (RUSAGE_SELF, &ru1);
-                struct timeval tv1;
-                gettimeofday (&tv1, NULL);
-
-                // find cpu time used
-                struct timeval &ut0 = ru0.ru_utime;
-                struct timeval &ut1 = ru1.ru_utime;
-                struct timeval &st0 = ru0.ru_stime;
-                struct timeval &st1 = ru1.ru_stime;
-                int ut_us = TVUSEC(ut0,ut1);
-                int st_us = TVUSEC(st0,st1);
-                cpu_us = ut_us + st_us;
-
-                // find elapsed time
-                et_us = TVUSEC(tv0,tv1);
-
-                // printf ("sleep_us= %10d cpu= %10d et= %10d %g\n", sleep_us, cpu_us, et_us, fmin(100,100.0*cpu_us/et_us));
+            // cap cpu usage by sleeping controlled by a simple integral controller
+            if (cpu_us > et_us*max_cpu_usage) {
+                // back off
+                if (sleep_us < max_sleep)
+                    sleep_us += sleep_dt;
+            } else {
+                // more!
+                if (sleep_us < sleep_dt)
+                    sleep_us = 0;
+                else
+                    sleep_us -= sleep_dt;
             }
+            if (sleep_us > 0)
+                usleep (sleep_us);
+
+            // get time and usage after running loop() and our usleep
+            struct rusage ru1;
+            getrusage (RUSAGE_SELF, &ru1);
+            struct timeval tv1;
+            gettimeofday (&tv1, NULL);
+
+            // find cpu time used
+            struct timeval &ut0 = ru0.ru_utime;
+            struct timeval &ut1 = ru1.ru_utime;
+            struct timeval &st0 = ru0.ru_stime;
+            struct timeval &st1 = ru1.ru_stime;
+            int ut_us = TVUSEC(ut0,ut1);
+            int st_us = TVUSEC(st0,st1);
+            cpu_us = ut_us + st_us;
+
+            // find elapsed time
+            et_us = TVUSEC(tv0,tv1);
+
+            // printf ("sleep_us= %10d cpu= %10d et= %10d %g\n", sleep_us, cpu_us, et_us, fmin(100,100.0*cpu_us/et_us));
         }
+    }
 }
