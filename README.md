@@ -23,7 +23,9 @@ Bug reports and pull requests are welcome on GitHub at
 
 * [HamClock Standards](https://github.com/openhamclock/hamclock-standards) - specifications source
 * [HamClock Client](https://github.com/openhamclock/hamclock) - reference frontend implementation source
-* [HamClockLauncher](https://github.com/huberthickman/HamClockLauncher) - frontend installer/launcher source
+    * includes Raspberry Pi/Debian and Docker installers
+    * [HamClockLauncher](https://github.com/huberthickman/HamClockLauncher) - macOS frontend installer/launcher source
+    * also many appliances available for sale, with HamClock pre-installed and automatically maintained
 * Open Hamclock Backend project
     * <https://ohb.works/> - main site
     * <https://github.com/komacke/open-hamclock-backend> - source
