@@ -81,6 +81,7 @@ function dumpConfig ()
     ping -c 3 clearskyinstitute.com
 }
 
+# when requesting a specific hamclock version, find it in github
 get_hamclock_source_url() {
     local substring=$1
 
@@ -180,19 +181,21 @@ if (( $? != 0 )) ; then echo error loading packages; exit 1; fi
 
 TBALL=ESPHamClock.zip
 if [ "$1" == -t ]; then
+    # requesting a specific version
     if [ -z "$2" ]; then
         echo "The -t argument requires a version like 4.22."
         exit 1
     fi
     get_hamclock_source_url "$2"
 else
+    # latest release
     TBURL=https://ohb.hamclock.app/ham/HamClock/$TBALL
 fi
 
 # download fresh program source
 rm -f $TBALL
 inform Downloading $TBURL ...
-if ! curl -L --silent --show-error --output $TBALL $TBURL >> $LOGFN 2>&1 ; then
+if ! curl -A 'install-hc-rpi' -L --silent --show-error --output $TBALL $TBURL >> $LOGFN 2>&1 ; then
     inform Error downloading $TBURL -- see $LOGFN
     exit 1
 fi
