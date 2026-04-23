@@ -116,6 +116,7 @@ OBJS = \
 	gpsd.o \
 	grayline.o \
 	kd3tree.o \
+	lightning.o \
 	infobox.o \
 	liveweb.o \
 	liveweb-html.o \

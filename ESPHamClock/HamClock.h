@@ -596,6 +596,7 @@ extern SCircle satpass_c;               // satellite pass horizon
 
 extern uint8_t night_on;                // show night portion of map on/off
 extern uint8_t names_on;                // show place names when roving
+extern uint8_t lightning_on;            // show lightning strikes overlay
 
 extern SBox desrss_b, dxsrss_b;         // sun rise/set display
 extern uint8_t desrss, dxsrss;          // sun rise/set chpice
@@ -2332,6 +2333,15 @@ extern const uint16_t runner[HC_RUNNER_W*HC_RUNNER_H] PROGMEM;
 extern void drawSanta(void);
 extern void drawFireworks(void);
 extern SBox santa_b;
+
+/*
+ * lightning.cpp
+ */
+
+extern void initLightning (void);
+extern void resetLightning (void);
+extern void updateLightning (void);
+extern void drawLightningOnMap (void);
 
 
 

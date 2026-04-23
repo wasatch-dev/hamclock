@@ -2347,6 +2347,9 @@ void updateWiFi(void)
     // freshen RSS
     checkRSS();
 
+    // update lightning overlay if due
+    updateLightning();
+
     // maps are checked after each full earth draw -- see drawMoreEarth()
 
     // check for server commands

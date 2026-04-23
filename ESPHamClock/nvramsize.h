@@ -357,6 +357,9 @@ static const uint8_t nv_sizes[NV_N] = {
     // 245
     4,                          // NV_ANT_DX_AZ
 
+    // 246
+    1,                          // NV_LIGHTNING_ON
+
 };
 
 #endif // _NVRAMSIZE_H
