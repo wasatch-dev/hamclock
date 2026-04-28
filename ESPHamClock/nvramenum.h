@@ -361,6 +361,9 @@ typedef enum {
     NV_LTG_WORLDWIDE,           // lightning: 1=worldwide, 0=radius
     NV_LTG_RADIUS,              // lightning: search radius in km
 
+    // 249
+    NV_ONTA_BANDS,              // on-the-air band filter: bitmask 0..11 160m..2m
+
 	NV_N
 
 } NV_Name;

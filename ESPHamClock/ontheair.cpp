@@ -57,6 +57,12 @@ static int n_ontaspots;                                 // n spots in onta_spots
 static DXSpot *ontawl_spots;                            // filtered malloced list, count in onta_ss.n_data
 static ScrollState onta_ss;                             // scrolling state
 static uint8_t onta_sortby;                             // one of ONTASort
+static uint32_t onta_bands;                             // bitmask of HamBandSetting, 0=all bands
+
+#define SET_ONTABAND(b)  (onta_bands |= (1U << (b)))
+#define CLR_ONTABAND(b)  (onta_bands &= ~(1U << (b)))
+#define TST_ONTABAND(b)  ((b) != HAMBAND_NONE && (onta_bands & (1U << (b))) != 0)
+#define ONTA_ALL_BANDS   0U                             // 0 means show all bands
 static bool onta_showbio;                               // whether click shows bio
 static uint32_t spots_hash, hash_atscroll;              // hash of onta_spots, value when scrolled away
 #define NEW_SPOTS()     (spots_hash != hash_atscroll)       // handy test for new spots pending
@@ -141,6 +147,13 @@ static void loadONTASettings (void)
         onta_age = onta_ages[1];
         NVWriteUInt8 (NV_ONTA_MAXAGE, onta_age);
     }
+    if (!NVReadUInt32 (NV_ONTA_BANDS, &onta_bands)) {
+        Serial.printf ("ONTA: NV_ONTA_BANDS id=%d not found, defaulting to all bands\n", (int)NV_ONTA_BANDS);
+        onta_bands = ONTA_ALL_BANDS;            // default: show all bands
+        NVWriteUInt32 (NV_ONTA_BANDS, onta_bands);
+    } else {
+        Serial.printf ("ONTA: NV_ONTA_BANDS id=%d loaded ok: 0x%08X\n", (int)NV_ONTA_BANDS, onta_bands);
+    }
 
     // parse onta_orgfilter
     parseONTAOrgs();
@@ -162,6 +175,7 @@ static void saveONTASettings (void)
     NVWriteString (NV_ONTAORG, onta_orgfilter);
     NVWriteUInt8 (NV_ONTA_MAXAGE, onta_age);
     NVWriteUInt8 (NV_ONTABIO, onta_showbio);
+    NVWriteUInt32 (NV_ONTA_BANDS, onta_bands);
 }
 
 /* create a line of text for the given spot that fits within the box known to be for PANE_0 or PANE_123.
@@ -382,7 +396,7 @@ static void rebuildONTAWatchList(void)
     // extract qualifying spots from onta_spots into ontawl_spots
     time_t oldest = myNow() - 60*onta_age;               // minutes to seconds
     onta_ss.n_data = 0;                                  // reset count, don't bother to resize ontawl_spots
-    int n_old = 0, n_no_org = 0, n_no_wl = 0;
+    int n_old = 0, n_no_org = 0, n_no_wl = 0, n_no_band = 0;
     for (int i = 0; i < n_ontaspots; i++) {
         DXSpot &spot = onta_spots[i];
         if (spot.spotted < oldest)
@@ -391,6 +405,8 @@ static void rebuildONTAWatchList(void)
             n_no_org++;
         else if (checkWatchListSpot (WLID_ONTA, spot) == WLS_NO)
             n_no_wl++;
+        else if (onta_bands != ONTA_ALL_BANDS && !TST_ONTABAND(findHamBand(spot.kHz)))
+            n_no_band++;
         else {
             // ok!
             ontawl_spots = (DXSpot *) realloc (ontawl_spots, (onta_ss.n_data+1) * sizeof(DXSpot));
@@ -400,8 +416,8 @@ static void rebuildONTAWatchList(void)
         }
     }
 
-    Serial.printf ("ONTA: %d total - %d too-old - %d not-org - %d not-WL = %d showing\n",
-                    n_ontaspots, n_old, n_no_org, n_no_wl, onta_ss.n_data);
+    Serial.printf ("ONTA: %d total - %d too-old - %d not-org - %d not-WL - %d not-band = %d showing\n",
+                    n_ontaspots, n_old, n_no_org, n_no_wl, n_no_band, onta_ss.n_data);
 
     // sort as desired and scroll to newest with new n_data
     qsort (ontawl_spots, onta_ss.n_data, sizeof(DXSpot), onta_sorts[onta_sortby].qsf);
@@ -454,68 +470,140 @@ static void runONTASortMenu (const SBox &box)
     MenuFieldType bio_no_mft = show_bio_enabled ? MENU_1OFN : MENU_IGNORE;
 
 
-    MenuItem mitems[] = {
-        // column 1
-        {bio_lbl_mft, false,                      0, 2, "Bio:", NULL},                          // 0
-        {MENU_LABEL, false,                       0, 2, "Age:", NULL},                          // 1
-        {MENU_BLANK, false,                       0, 2, NULL, NULL},                            // 2
-        {MENU_LABEL, false,                       0, 2, "Sort:", NULL},                         // 3
-        {MENU_BLANK, false,                       0, 2, NULL, NULL},                            // 4
+    // N.B. must be column-major order, 3 columns, 9 rows = 27 table items + 2 MENU_TEXT
+    // Col1(0-8):  Bio_lbl, Age_lbl, blank, Sort_lbl, blank, 160, 80, 60, 40
+    // Col2(9-17): Yes, age0, age2, sortAge, sortBand, 30, 20, 17, 15
+    // Col3(18-26):No, age1, age3, sortCall, sortOrg, 12, 10, 6, 2
+    // Text(27-28):Org, WL
+    #define _O_BIO_LBL   0
+    #define _O_AGE_LBL   1
+    #define _O_BLK1      2
+    #define _O_SORT_LBL  3
+    #define _O_BLK2      4
+    #define _O_B160      5
+    #define _O_B80       6
+    #define _O_B60       7
+    #define _O_B40       8
+    #define _O_BIO_YES   9
+    #define _O_AGE0     10
+    #define _O_AGE2     11
+    #define _O_S_AGE    12
+    #define _O_S_BAND   13
+    #define _O_B30      14
+    #define _O_B20      15
+    #define _O_B17      16
+    #define _O_B15      17
+    #define _O_BIO_NO   18
+    #define _O_AGE1     19
+    #define _O_AGE3     20
+    #define _O_S_CALL   21
+    #define _O_S_ORG    22
+    #define _O_B12      23
+    #define _O_B10      24
+    #define _O_B6       25
+    #define _O_B2       26
+    #define _O_ORG      27
+    #define _O_WL       28
+    #define _O_N        29
 
-        // column 2
-        {bio_yes_mft, onta_showbio,               1, 2, "Yes", NULL},                           // 5
-        {MENU_1OFN, onta_ages[0] == onta_age,     2, 2, onta_ages_str[0], NULL},                // 6
-        {MENU_1OFN, onta_ages[2] == onta_age,     2, 2, onta_ages_str[2], NULL},                // 7
-        {MENU_1OFN, onta_sortby == ONTAS_AGE,     3, 2, onta_sorts[ONTAS_AGE].menu_name, NULL}, // 8
-        {MENU_1OFN, onta_sortby == ONTAS_BAND,    3, 2, onta_sorts[ONTAS_BAND].menu_name,NULL}, // 9
+    #define _OB(b)  (onta_bands==ONTA_ALL_BANDS || TST_ONTABAND(b))
 
-        // columns 3
-        {bio_no_mft, !onta_showbio,               1, 2, "No", NULL},                            // 10
-        {MENU_1OFN, onta_ages[1] == onta_age,     2, 2, onta_ages_str[1], NULL},                // 11
-        {MENU_1OFN, onta_ages[3] == onta_age,     2, 2, onta_ages_str[3], NULL},                // 12
-        {MENU_1OFN, onta_sortby == ONTAS_CALL,    3, 2, onta_sorts[ONTAS_CALL].menu_name,NULL}, // 13
-        {MENU_1OFN, onta_sortby == ONTAS_ORG,     3, 2, onta_sorts[ONTAS_ORG].menu_name, NULL}, // 14
-
-        // text fields across the bottom
-        {MENU_TEXT, false,                        4, 2, org_mt.label, &org_mt},                 // 15
-        {MENU_TEXT, false,                        5, 2, wl_mt.label, &wl_mt},                   // 16
+    MenuItem mitems[_O_N] = {
+        // column 1: labels + 4 bands (160/80/60/40)
+        {bio_lbl_mft, false,                       0, 2, "Bio:",  NULL},  // 0
+        {MENU_LABEL,  false,                       0, 2, "Age:",  NULL},  // 1
+        {MENU_BLANK,  false,                       0, 2, NULL,    NULL},  // 2
+        {MENU_LABEL,  false,                       0, 2, "Sort:", NULL},  // 3
+        {MENU_LABEL,  false,                       0, 2, "Band:", NULL},  // 4
+        {MENU_AL1OFN, _OB(HAMBAND_160M), 4, 2, findBandName(HAMBAND_160M), NULL},  // 5
+        {MENU_AL1OFN, _OB(HAMBAND_80M),  4, 2, findBandName(HAMBAND_80M),  NULL},  // 6
+        {MENU_AL1OFN, _OB(HAMBAND_60M),  4, 2, findBandName(HAMBAND_60M),  NULL},  // 7
+        {MENU_AL1OFN, _OB(HAMBAND_40M),  4, 2, findBandName(HAMBAND_40M),  NULL},  // 8
+        // column 2: bio/age/sort options + 4 bands (30/20/17/15)
+        {bio_yes_mft, onta_showbio,                1, 2, "Yes",                            NULL},  // 9
+        {MENU_1OFN, onta_ages[0]==onta_age,        2, 2, onta_ages_str[0],                 NULL},  // 10
+        {MENU_1OFN, onta_ages[2]==onta_age,        2, 2, onta_ages_str[2],                 NULL},  // 11
+        {MENU_1OFN, onta_sortby==ONTAS_AGE,        3, 2, onta_sorts[ONTAS_AGE].menu_name,  NULL},  // 12
+        {MENU_1OFN, onta_sortby==ONTAS_BAND,       3, 2, onta_sorts[ONTAS_BAND].menu_name, NULL},  // 13
+        {MENU_AL1OFN, _OB(HAMBAND_30M),  4, 2, findBandName(HAMBAND_30M),  NULL},  // 14
+        {MENU_AL1OFN, _OB(HAMBAND_20M),  4, 2, findBandName(HAMBAND_20M),  NULL},  // 15
+        {MENU_AL1OFN, _OB(HAMBAND_17M),  4, 2, findBandName(HAMBAND_17M),  NULL},  // 16
+        {MENU_AL1OFN, _OB(HAMBAND_15M),  4, 2, findBandName(HAMBAND_15M),  NULL},  // 17
+        // column 3: bio/age/sort options + 4 bands (12/10/6/2)
+        {bio_no_mft,  !onta_showbio,               1, 2, "No",                             NULL},  // 18
+        {MENU_1OFN, onta_ages[1]==onta_age,        2, 2, onta_ages_str[1],                 NULL},  // 19
+        {MENU_1OFN, onta_ages[3]==onta_age,        2, 2, onta_ages_str[3],                 NULL},  // 20
+        {MENU_1OFN, onta_sortby==ONTAS_CALL,       3, 2, onta_sorts[ONTAS_CALL].menu_name, NULL},  // 21
+        {MENU_1OFN, onta_sortby==ONTAS_ORG,        3, 2, onta_sorts[ONTAS_ORG].menu_name,  NULL},  // 22
+        {MENU_AL1OFN, _OB(HAMBAND_12M),  4, 2, findBandName(HAMBAND_12M),  NULL},  // 23
+        {MENU_AL1OFN, _OB(HAMBAND_10M),  4, 2, findBandName(HAMBAND_10M),  NULL},  // 24
+        {MENU_AL1OFN, _OB(HAMBAND_6M),   4, 2, findBandName(HAMBAND_6M),   NULL},  // 25
+        {MENU_AL1OFN, _OB(HAMBAND_2M),   4, 2, findBandName(HAMBAND_2M),   NULL},  // 26
+        // text fields spanning full width at bottom
+        {MENU_TEXT, false,                5, 2, org_mt.label, &org_mt},  // 27
+        {MENU_TEXT, false,                6, 2, wl_mt.label,  &wl_mt},   // 28
     };
-    #define ONTAMENU_N   NARRAY(mitems)
+
+    #define ONTAMENU_N          _O_N
+    #define ONTAMENU_BAND_FIRST _O_B160
+    #define ONTAMENU_BAND_LAST  _O_B2
 
     SBox menu_b = box;                          // copy, not ref!
     menu_b.x = box.x + 5;
-    menu_b.y = box.y + SUBTITLE_Y0;
-    menu_b.w = box.w - 10;                      // pretty much full widt:
+    menu_b.y = box.y + 2;
+    menu_b.w = box.w - 10;
     SBox ok_b;
     MenuInfo menu = {menu_b, ok_b, UF_CLOCKSOK, M_CANCELOK, 3, ONTAMENU_N, mitems};
     if (runMenu (menu)) {
 
         // check bio
-        onta_showbio = mitems[5].set;
+        onta_showbio = mitems[_O_BIO_YES].set;
 
         // set desired age
-        if (mitems[6].set)
+        if (mitems[_O_AGE0].set)
             onta_age = onta_ages[0];
-        else if (mitems[7].set)
+        else if (mitems[_O_AGE2].set)
             onta_age = onta_ages[2];
-        else if (mitems[11].set)
+        else if (mitems[_O_AGE1].set)
             onta_age = onta_ages[1];
-        else if (mitems[12].set)
+        else if (mitems[_O_AGE3].set)
             onta_age = onta_ages[3];
         else
             fatalError ("runONTASortMenu no age set");
 
         // set desired sort
-        if (mitems[8].set)
+        if (mitems[_O_S_AGE].set)
             onta_sortby = ONTAS_AGE;
-        else if (mitems[9].set)
+        else if (mitems[_O_S_BAND].set)
             onta_sortby = ONTAS_BAND;
-        else if (mitems[13].set)
+        else if (mitems[_O_S_CALL].set)
             onta_sortby = ONTAS_CALL;
-        else if (mitems[14].set)
+        else if (mitems[_O_S_ORG].set)
             onta_sortby = ONTAS_ORG;
         else
             fatalError ("runONTASortMenu no sort set");
+
+        // set band filter — bands are split across 3 columns
+        onta_bands = ONTA_ALL_BANDS;
+        // col1 bands: 160,80,60,40 at items 5-8
+        if (mitems[_O_B160].set) SET_ONTABAND(HAMBAND_160M);
+        if (mitems[_O_B80].set)  SET_ONTABAND(HAMBAND_80M);
+        if (mitems[_O_B60].set)  SET_ONTABAND(HAMBAND_60M);
+        if (mitems[_O_B40].set)  SET_ONTABAND(HAMBAND_40M);
+        // col2 bands: 30,20,17,15 at items 14-17
+        if (mitems[_O_B30].set)  SET_ONTABAND(HAMBAND_30M);
+        if (mitems[_O_B20].set)  SET_ONTABAND(HAMBAND_20M);
+        if (mitems[_O_B17].set)  SET_ONTABAND(HAMBAND_17M);
+        if (mitems[_O_B15].set)  SET_ONTABAND(HAMBAND_15M);
+        // col3 bands: 12,10,6,2 at items 23-26
+        if (mitems[_O_B12].set)  SET_ONTABAND(HAMBAND_12M);
+        if (mitems[_O_B10].set)  SET_ONTABAND(HAMBAND_10M);
+        if (mitems[_O_B6].set)   SET_ONTABAND(HAMBAND_6M);
+        if (mitems[_O_B2].set)   SET_ONTABAND(HAMBAND_2M);
+        // if every band checked store as ONTA_ALL_BANDS
+        if (onta_bands == ((1U << HAMBAND_N) - 1U))
+            onta_bands = ONTA_ALL_BANDS;
+        Serial.printf ("ONTA: band filter mask 0x%08X\n", onta_bands);
 
         // must recompile to update wl but runMenu already insured wl compiles ok
         Message ynot;
@@ -538,6 +626,41 @@ static void runONTASortMenu (const SBox &box)
 
     // always free the working text
     free (wl_mt.text);
+
+    #undef ONTAMENU_N
+    #undef ONTAMENU_BAND_FIRST
+    #undef ONTAMENU_BAND_LAST
+    #undef _O_BIO_LBL
+    #undef _O_AGE_LBL
+    #undef _O_BLK1
+    #undef _O_SORT_LBL
+    #undef _O_BAND_LBL
+    #undef _O_BIO_YES
+    #undef _O_AGE0
+    #undef _O_AGE2
+    #undef _O_S_AGE
+    #undef _O_S_BAND
+    #undef _O_BIO_NO
+    #undef _O_AGE1
+    #undef _O_AGE3
+    #undef _O_S_CALL
+    #undef _O_S_ORG
+    #undef _O_B160
+    #undef _O_B80
+    #undef _O_B60
+    #undef _O_B40
+    #undef _O_B30
+    #undef _O_B20
+    #undef _O_B17
+    #undef _O_B15
+    #undef _O_B12
+    #undef _O_B10
+    #undef _O_B6
+    #undef _O_B2
+    #undef _O_ORG
+    #undef _O_WL
+    #undef _O_N
+    #undef _OB
 }
 
 /* reset storage and prep for box
