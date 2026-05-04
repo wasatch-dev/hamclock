@@ -2363,15 +2363,11 @@ void updateWiFi(void)
  */
 bool getTCPLine (WiFiClient &client, char line[], uint16_t line_len, uint16_t *ll)
 {
-    // limit reading to 10x the buffer length to prevent indefinite looping/DoS
-    uint32_t max_read = line_len * 10;
-    uint32_t n_read = 0;
-
     // decrement available length so there's always room to add '\0'
     line_len -= 1;
 
     uint16_t i = 0;
-    while (n_read++ < max_read) {
+    while (true) {
         char c;
         if (!getTCPChar (client, &c))
             return (false);
